@@ -14,6 +14,7 @@ import {
   addDoc,
   deleteDoc,
   doc,
+  getDoc,
   onSnapshot,
   query,
   orderBy
@@ -42,8 +43,16 @@ const db = getFirestore(app);
 const auth = getAuth(app);
 const provider = new GoogleAuthProvider();
 
-// Firestore 안의 "memos" 컬렉션을 가리킵니다.
+// Firestore 안의 "memos" 켜렉션을 가리킵니다.
 const memosCol = collection(db, "memos");
+
+// 현재 로그인한 사용자의 역할입니다. ('teacher' | 'student' | null)
+// 역할이 바뀌면 담벼락을 다시 그리기 위해 모듈 수준에 둥니다.
+let currentRole = null;
+
+// 가장 최근 메모 목록입니다.
+// 역할이 능동적으로 바뀌어도 다시 그릴 수 있도록 보관합니다.
+let latestMemos = [];
 
 
 
@@ -76,8 +85,9 @@ async function addMemo(text) {
 }
 
 // 메모를 지웁니다.
-// 백엔드 2: 지금은 누구든 남의 메모를 지울 수 있습니다. 이걸 막는 것이 과제입니다.
+// 교사만 지울 수 있습니다.
 async function deleteMemo(id) {
+  if (currentRole !== "teacher") return;
   await deleteDoc(doc(db, "memos", id));
 }
 
@@ -101,14 +111,15 @@ function makeMemo(memo) {
   const div = document.createElement("div");
   div.className = "memo";
 
-  const del = document.createElement("button");
-  del.textContent = "×";
-  // onclick 대신 addEventListener를 씁니다.
-  // deleteMemo가 Firestore를 바꾸면 onSnapshot이 자동으로 render()를 부릅니다.
-  del.addEventListener("click", function () {
-    deleteMemo(memo.id);
-  });
-  div.appendChild(del);
+  // 삭제 버튼: 교사만 볼 수 있습니다.
+  if (currentRole === "teacher") {
+    const del = document.createElement("button");
+    del.textContent = "×";
+    del.addEventListener("click", function () {
+      deleteMemo(memo.id);
+    });
+    div.appendChild(del);
+  }
 
   const span = document.createElement("span");
   span.textContent = memo.text;
@@ -127,8 +138,8 @@ function makeMemo(memo) {
 const q = query(memosCol, orderBy("createdAt"));
 
 onSnapshot(q, function (snapshot) {
-  const memos = loadMemos(snapshot);
-  render(memos);
+  latestMemos = loadMemos(snapshot);
+  render(latestMemos);
 });
 
 
@@ -155,14 +166,25 @@ function signOutUser() {
 }
 
 // 로그인 상태가 바뀔 때마다 userArea와 입력칸을 업데이트합니다.
-onAuthStateChanged(auth, function (user) {
+onAuthStateChanged(auth, async function (user) {
   const userArea = document.getElementById("userArea");
   userArea.innerHTML = "";
 
   if (user) {
-    // 로그인 상태: 이름과 로그아웃 버튼을 보여 줍니다.
+    // roles 컬렉션에서 역할을 읽어 옵니다.
+    // 읽기 권한이 없거나 문서가 없으면 기본값 'student'로 처리합니다.
+    try {
+      const roleSnap = await getDoc(doc(db, "roles", user.uid));
+      currentRole = roleSnap.exists() ? roleSnap.data().role : "student";
+    } catch (e) {
+      // 보안 규칙에서 roles 읽기가 막힌 경우 student로 처리합니다.
+      currentRole = "student";
+    }
+
+    // 로그인 상태: 이름과 역할, 로그아웃 버튼을 보여 줍니다.
+    const roleLabel = currentRole === "teacher" ? "선생님" : "학생";
     const nameSpan = document.createElement("span");
-    nameSpan.textContent = user.displayName + "님 안녕하세요! ";
+    nameSpan.textContent = "[" + roleLabel + "] " + user.displayName + "님 안녕하세요!  ";
 
     const logoutBtn = document.createElement("button");
     logoutBtn.textContent = "로그아웃";
@@ -176,6 +198,8 @@ onAuthStateChanged(auth, function (user) {
     input.placeholder = "메모를 쓰고 엔터";
     input.focus();
   } else {
+    currentRole = null;
+
     // 로그아웃 상태: 로그인 버튼을 보여 줍니다.
     const loginBtn = document.createElement("button");
     loginBtn.textContent = "구글로 로그인";
@@ -186,6 +210,9 @@ onAuthStateChanged(auth, function (user) {
     input.disabled = true;
     input.placeholder = "로그인해야 메모를 쓸 수 있습니다";
   }
+
+  // 역할이 바뀌어도 담벼락을 다시 그립니다.
+  render(latestMemos);
 });
 
 
