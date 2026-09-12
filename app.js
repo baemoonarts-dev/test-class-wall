@@ -132,6 +132,9 @@ input.addEventListener("keydown", function (e) {
     const text = input.value.trim();
     if (text === "") return;
 
+    // 5글자 미만이면 저장하지 않습니다.
+    if (text.length < 5) return;
+
     addMemo(text);
     input.value = "";
     // render()는 onSnapshot이 자동으로 부릅니다.
