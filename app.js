@@ -1,54 +1,69 @@
 // ===================================================
-// 우리 반 담벼락 - 시작점
+// 우리 반 담벼락
 //
-// 메모를 쓰면 올린 순서대로 담벼락에 붙습니다.
-// 지금은 데이터가 아래 배열에만 들어 있어서,
-// 브라우저를 새로고침하면 전부 사라집니다.
+// 메모를 쓰면 Firebase Firestore에 저장됩니다.
+// 새로고침해도 메모가 사라지지 않고,
+// 다른 사람이 쓴 메모도 실시간으로 나타납니다.
 // ===================================================
 
+import { initializeApp } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js";
+import {
+  getFirestore,
+  collection,
+  addDoc,
+  deleteDoc,
+  doc,
+  onSnapshot,
+  query,
+  orderBy
+} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js";
 
-// --- 메모 목록 ---
-// createdAt 은 메모를 쓴 시각(밀리초)입니다. 이 값으로 순서를 정합니다.
-let memos = [
-  { id: 1, text: "오늘 과학 시간에 한 실험이 재미있었다", createdAt: 1757030400000 },
-  { id: 2, text: "궁금한 점 - 물은 왜 100도에서 끓나요?", createdAt: 1757030500000 },
-  { id: 3, text: "모둠 친구들이 도와줘서 고마웠다", createdAt: 1757030600000 }
-];
+// Firebase 설정
+const firebaseConfig = {
+  apiKey: "AIzaSyCpHLVwcRs5MWbdgJehBKactd4kEIOJJoY",
+  authDomain: "fir-starter-982c1.firebaseapp.com",
+  projectId: "fir-starter-982c1",
+  storageBucket: "fir-starter-982c1.firebasestorage.app",
+  messagingSenderId: "481573475863",
+  appId: "1:481573475863:web:ce6cd75d62ebd494beae52"
+};
 
-let nextId = 4;  // 새 메모에 붙일 번호
+// Firebase와 Firestore를 초기화합니다.
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+
+// Firestore 안의 "memos" 컬렉션을 가리킵니다.
+const memosCol = collection(db, "memos");
+
+
 
 
 // ===================================================
 // 데이터를 다루는 함수 세 개
-// 백엔드 1 시간에 이 세 개가 Firestore를 쓰는 코드로 바뀝니다.
 // ===================================================
 
 // 메모를 읽어 옵니다.
-// 백엔드 1: 여기가 Firestore에서 가져오는 코드로 바뀝니다.
-//           순서는 orderBy("createdAt") 으로 맞춥니다.
-function loadMemos() {
-  return memos.slice().sort(function (a, b) {
-    return a.createdAt - b.createdAt;
+// onSnapshot이 넘겨준 snapshot에서 문서 목록을 꺼냅니다.
+// id는 Firestore가 자동으로 붙여 주는 문서 ID 문자열입니다.
+function loadMemos(snapshot) {
+  return snapshot.docs.map(function (docSnap) {
+    return Object.assign({ id: docSnap.id }, docSnap.data());
   });
 }
 
 // 메모를 새로 씁니다.
 // 백엔드 2: 여기에 "누가 썼는지"(uid)를 함께 저장하게 됩니다.
-function addMemo(text) {
-  memos.push({
-    id: nextId,
+async function addMemo(text) {
+  await addDoc(memosCol, {
     text: text,
     createdAt: Date.now()
   });
-  nextId = nextId + 1;
 }
 
 // 메모를 지웁니다.
 // 백엔드 2: 지금은 누구든 남의 메모를 지울 수 있습니다. 이걸 막는 것이 과제입니다.
-function deleteMemo(id) {
-  memos = memos.filter(function (memo) {
-    return memo.id !== id;
-  });
+async function deleteMemo(id) {
+  await deleteDoc(doc(db, "memos", id));
 }
 
 
@@ -56,11 +71,12 @@ function deleteMemo(id) {
 // 화면 그리기
 // ===================================================
 
-function render() {
+// memos: loadMemos()가 반환한 배열을 받아서 담벼락을 다시 그립니다.
+function render(memos) {
   const wall = document.getElementById("wall");
   wall.innerHTML = "";
 
-  loadMemos().forEach(function (memo) {
+  memos.forEach(function (memo) {
     wall.appendChild(makeMemo(memo));
   });
 }
@@ -72,10 +88,11 @@ function makeMemo(memo) {
 
   const del = document.createElement("button");
   del.textContent = "×";
-  del.onclick = function () {
+  // onclick 대신 addEventListener를 씁니다.
+  // deleteMemo가 Firestore를 바꾸면 onSnapshot이 자동으로 render()를 부릅니다.
+  del.addEventListener("click", function () {
     deleteMemo(memo.id);
-    render();
-  };
+  });
   div.appendChild(del);
 
   const span = document.createElement("span");
@@ -87,13 +104,28 @@ function makeMemo(memo) {
 
 
 // ===================================================
+// 실시간 리스너
+// Firestore 데이터가 바뀔 때마다 자동으로 render()를 부릅니다.
+// ===================================================
+
+// createdAt 순서로 정렬해서 가져옵니다.
+const q = query(memosCol, orderBy("createdAt"));
+
+onSnapshot(q, function (snapshot) {
+  const memos = loadMemos(snapshot);
+  render(memos);
+});
+
+
+// ===================================================
 // 메모 쓰는 칸
 // 엔터를 누르면 담벼락에 붙습니다 (줄바꿈은 Shift + 엔터)
 // ===================================================
 
 const input = document.getElementById("input");
 
-input.onkeydown = function (e) {
+// onkeydown 대신 addEventListener를 씁니다.
+input.addEventListener("keydown", function (e) {
   if (e.key === "Enter" && !e.shiftKey) {
     e.preventDefault();
 
@@ -102,11 +134,8 @@ input.onkeydown = function (e) {
 
     addMemo(text);
     input.value = "";
-    render();
+    // render()는 onSnapshot이 자동으로 부릅니다.
   }
-};
+});
 
-
-// 첫 화면 그리기
-render();
 input.focus();
