@@ -133,6 +133,14 @@ onSnapshot(q, function (snapshot) {
 
 
 // ===================================================
+// 메모 쓰는 칸 — 요소 참조
+// onAuthStateChanged 안에서도 쓰이므로 먼저 선언합니다.
+// ===================================================
+
+const input = document.getElementById("input");
+
+
+// ===================================================
 // 로그인 / 로그아웃
 // ===================================================
 
@@ -182,11 +190,9 @@ onAuthStateChanged(auth, function (user) {
 
 
 // ===================================================
-// 메모 쓰는 칸
+// 메모 쓰는 칸 — 키보드 이벤트
 // 엔터를 누르면 담벼락에 붙습니다 (줄바꿈은 Shift + 엔터)
 // ===================================================
-
-const input = document.getElementById("input");
 
 // onkeydown 대신 addEventListener를 씁니다.
 input.addEventListener("keydown", function (e) {
@@ -204,5 +210,3 @@ input.addEventListener("keydown", function (e) {
     // render()는 onSnapshot이 자동으로 부릅니다.
   }
 });
-
-input.focus();
