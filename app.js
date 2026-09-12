@@ -4,6 +4,7 @@
 // 메모를 쓰면 Firebase Firestore에 저장됩니다.
 // 새로고침해도 메모가 사라지지 않고,
 // 다른 사람이 쓴 메모도 실시간으로 나타납니다.
+// 구글 계정으로 로그인해야 메모를 쓸 수 있습니다.
 // ===================================================
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js";
@@ -17,6 +18,13 @@ import {
   query,
   orderBy
 } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js";
+import {
+  getAuth,
+  GoogleAuthProvider,
+  signInWithPopup,
+  signOut,
+  onAuthStateChanged
+} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js";
 
 // Firebase 설정
 const firebaseConfig = {
@@ -28,9 +36,11 @@ const firebaseConfig = {
   appId: "1:481573475863:web:ce6cd75d62ebd494beae52"
 };
 
-// Firebase와 Firestore를 초기화합니다.
+// Firebase와 Firestore, Auth를 초기화합니다.
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
+const auth = getAuth(app);
+const provider = new GoogleAuthProvider();
 
 // Firestore 안의 "memos" 컬렉션을 가리킵니다.
 const memosCol = collection(db, "memos");
@@ -52,11 +62,16 @@ function loadMemos(snapshot) {
 }
 
 // 메모를 새로 씁니다.
-// 백엔드 2: 여기에 "누가 썼는지"(uid)를 함께 저장하게 됩니다.
+// uid도 함께 저장합니다. (나중에 "내 메모만 삭제" 기능을 붙일 때 씁니다.)
 async function addMemo(text) {
+  const user = auth.currentUser;
+  // 로그인하지 않은 상태면 저장하지 않습니다.
+  if (!user) return;
+
   await addDoc(memosCol, {
     text: text,
-    createdAt: Date.now()
+    createdAt: Date.now(),
+    uid: user.uid
   });
 }
 
@@ -114,6 +129,55 @@ const q = query(memosCol, orderBy("createdAt"));
 onSnapshot(q, function (snapshot) {
   const memos = loadMemos(snapshot);
   render(memos);
+});
+
+
+// ===================================================
+// 로그인 / 로그아웃
+// ===================================================
+
+// 구글 로그인 팝업을 엽니다.
+function signIn() {
+  signInWithPopup(auth, provider);
+}
+
+// 로그아웃합니다.
+function signOutUser() {
+  signOut(auth);
+}
+
+// 로그인 상태가 바뀔 때마다 userArea와 입력칸을 업데이트합니다.
+onAuthStateChanged(auth, function (user) {
+  const userArea = document.getElementById("userArea");
+  userArea.innerHTML = "";
+
+  if (user) {
+    // 로그인 상태: 이름과 로그아웃 버튼을 보여 줍니다.
+    const nameSpan = document.createElement("span");
+    nameSpan.textContent = user.displayName + "님 안녕하세요! ";
+
+    const logoutBtn = document.createElement("button");
+    logoutBtn.textContent = "로그아웃";
+    logoutBtn.addEventListener("click", signOutUser);
+
+    userArea.appendChild(nameSpan);
+    userArea.appendChild(logoutBtn);
+
+    // 로그인했으므로 입력칸을 활성화합니다.
+    input.disabled = false;
+    input.placeholder = "메모를 쓰고 엔터";
+    input.focus();
+  } else {
+    // 로그아웃 상태: 로그인 버튼을 보여 줍니다.
+    const loginBtn = document.createElement("button");
+    loginBtn.textContent = "구글로 로그인";
+    loginBtn.addEventListener("click", signIn);
+    userArea.appendChild(loginBtn);
+
+    // 로그아웃 상태에서는 입력칸을 비활성화합니다.
+    input.disabled = true;
+    input.placeholder = "로그인해야 메모를 쓸 수 있습니다";
+  }
 });
 
 
