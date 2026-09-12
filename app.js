@@ -89,7 +89,11 @@ async function addMemo(text) {
 // 교사만 지울 수 있습니다.
 async function deleteMemo(id) {
   if (currentRole !== "teacher") return;
-  await deleteDoc(doc(db, "memos", id));
+  try {
+    await deleteDoc(doc(db, "memos", id));
+  } catch (e) {
+    alert("삭제에 실패했습니다. Firestore 보안 규칙을 확인해 주세요.\n" + e.message);
+  }
 }
 
 // AI 코멘트를 요청하고 Firestore에 저장합니다.
